@@ -3,12 +3,19 @@
 //! The **WebUSB API** provides a way to expose non-standard Universal Serial Bus (USB)
 //! compatible devices services to the web, to make USB safer and easier to use.
 //!
-//! MDN provides an [API overview] while detailed information is available in the
+//! This crate provides Rust support for using WebUSB when targeting WebAssembly.
+//! 
+//! MDN provides a [WebUSB overview] while detailed information is available in the
 //! [WebUSB specification].
 //!
-//! [API overview]: https://developer.mozilla.org/en-US/docs/Web/API/WebUSB_API
+//! [WebUSB overview]: https://developer.mozilla.org/en-US/docs/Web/API/WebUSB_API
 //! [WebUSB specification]: https://wicg.github.io/webusb/
 //!
+//! ### Usage
+//! Call [`Usb::new()`] to obtain an interface to the WebUSB API.
+//! You must call [`Usb::request_device()`] to ask the user for permission before
+//! any USB device can be used through this API.
+//! 
 
 #![warn(missing_docs)]
 
