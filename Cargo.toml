@@ -1,6 +1,6 @@
 [package]
 name = "webusb-web"
-description = "WebUSB on the web"
+description = "WebUSB on the web 🕸️ — Access USB devices from the web browser."
 authors = ["Sebastian Urban <surban@surban.net>"]
 repository = "https://github.com/surban/webusb-web"
 version = "0.1.0"
@@ -9,7 +9,7 @@ edition = "2021"
 
 [dependencies]
 futures-core = { version = "0.3" }
-futures-util = { version = "0.3", features = ["sink"] }
+futures-util = { version = "0.3" }
 js-sys = "0.3"
 tokio = { version = "1.43", default-features = false, features = ["sync"] }
 tokio-stream = { version = "0.1.17", default-features = false, features = ["sync"] }
@@ -51,7 +51,8 @@ web-sys = { version = "0.3", features = [
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"
-web-sys = { version = "0.3", features = ["console"] }
+web-sys = { version = "0.3", features = ["console", "Document", "HtmlElement"] }
+tokio = { version = "1.43", features = ["macros"] }
 
 [package.metadata.docs.rs]
 targets = ["wasm32-unknown-unknown"]

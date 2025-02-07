@@ -1,4 +1,4 @@
-//! WebUSB on the web
+//! WebUSB on the web 🕸️ — Access USB devices from the web browser.
 //!
 //! The **WebUSB API** provides a way to expose non-standard Universal Serial Bus (USB)
 //! compatible devices services to the web, to make USB safer and easier to use.
@@ -79,6 +79,8 @@ pub enum ErrorKind {
     Stall,
     /// The USB device sent too much data.
     Babble,
+    /// USB transfer failed.
+    Transfer,
     /// Invalid access.
     InvalidAccess,
     /// Other error.
@@ -99,6 +101,7 @@ impl From<JsValue> for Error {
                 "NotFoundError" => ErrorKind::Disconnected,
                 "SecurityError" => ErrorKind::Security,
                 "InvalidAccessError" => ErrorKind::InvalidAccess,
+                "NetworkError" => ErrorKind::Transfer,
                 _ => ErrorKind::Other,
             };
             return Error::new(kind, msg);
@@ -556,7 +559,7 @@ unsafe impl<T> Send for SendWrapper<T> {}
 
 /// WebUSB event stream.
 ///
-/// Provides device change events.
+/// Provides device change events for paired devices.
 pub struct UsbEvents {
     // We wrap UsbEvent in SendWrapper to allow the use of
     // BroadcastStream. However, we need to ensure that UsbEvents
@@ -645,6 +648,8 @@ impl Usb {
     }
 
     /// Subscribe to a stream of [`UsbEvent`]s notifying of USB device changes.
+    ///
+    /// Only events for paired devices will be provided.
     pub fn events(&self) -> UsbEvents {
         UsbEvents { rx: self.event_rx.resubscribe().into(), _marker: PhantomData }
     }
@@ -784,9 +789,8 @@ impl OpenUsbDevice {
 
         Self::check_status(res.status())?;
 
-        let data = res.data().unwrap();
-        let array = Uint8Array::new(&data);
-        Ok(array.to_vec())
+        let data = Uint8Array::new(&res.data().unwrap().buffer()).to_vec();
+        Ok(data)
     }
 
     /// Perform a control transfer from host to device.
@@ -823,11 +827,7 @@ impl OpenUsbDevice {
         for packet in res.packets() {
             let packet = packet.dyn_into::<web_sys::UsbIsochronousInTransferPacket>().unwrap();
             let result = match Self::check_status(packet.status()) {
-                Ok(()) => {
-                    let data = res.data().unwrap();
-                    let array = Uint8Array::new(&data);
-                    Ok(array.to_vec())
-                }
+                Ok(()) => Ok(Uint8Array::new(&res.data().unwrap().buffer()).to_vec()),
                 Err(err) => Err(err),
             };
             results.push(result);
@@ -877,9 +877,8 @@ impl OpenUsbDevice {
 
         Self::check_status(res.status())?;
 
-        let data = res.data().unwrap();
-        let array = Uint8Array::new(&data);
-        Ok(array.to_vec())
+        let data = Uint8Array::new(&res.data().unwrap().buffer()).to_vec();
+        Ok(data)
     }
 
     /// Performs a bulk or interrupt transfer to the specified endpoint of the device.

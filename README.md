@@ -1,6 +1,7 @@
 # webusb-web — WebUSB on the web 🕸️
 
 This crate provides WebUSB support in a JavaScript runtime environment, usually a web browser.
+It allows you to communicate with connected USB devices from a web browser.
 
 The **WebUSB API** provides a way to expose non-standard Universal Serial Bus (USB)
 compatible devices services to the web, to make USB safer and easier to use.
