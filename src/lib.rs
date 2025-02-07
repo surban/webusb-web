@@ -4,7 +4,7 @@
 //! compatible devices services to the web, to make USB safer and easier to use.
 //!
 //! This crate provides Rust support for using WebUSB when targeting WebAssembly.
-//! 
+//!
 //! MDN provides a [WebUSB overview] while detailed information is available in the
 //! [WebUSB specification].
 //!
@@ -15,7 +15,7 @@
 //! Call [`Usb::new()`] to obtain an interface to the WebUSB API.
 //! You must call [`Usb::request_device()`] to ask the user for permission before
 //! any USB device can be used through this API.
-//! 
+//!
 
 #![warn(missing_docs)]
 
@@ -30,7 +30,7 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use js_sys::{Reflect, Uint8Array};
 use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 
@@ -114,6 +114,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// A configuration belonging to a USB device.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct UsbConfiguration {
     /// The numeric value identifying this configuration.
     pub configuration_value: u8,
@@ -142,6 +143,7 @@ impl From<&web_sys::UsbConfiguration> for UsbConfiguration {
 
 /// A USB interface grouping one or more alternate settings.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct UsbInterface {
     /// The interface number.
     pub interface_number: u8,
@@ -164,6 +166,7 @@ impl From<&web_sys::UsbInterface> for UsbInterface {
 
 /// An alternate setting containing detailed interface information.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct UsbAlternateSetting {
     /// The alternate setting value.
     pub alternate_setting: u8,
@@ -201,6 +204,7 @@ impl From<&web_sys::UsbAlternateInterface> for UsbAlternateSetting {
 
 /// A USB endpoint used for communication with a device.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct UsbEndpoint {
     /// The endpoint number.
     pub endpoint_number: u8,
@@ -417,6 +421,7 @@ impl From<UsbDirection> for web_sys::UsbDirection {
 ///
 /// Fields left as `None` will match any value in that field.
 #[derive(Debug, Clone, Default)]
+#[non_exhaustive]
 pub struct UsbDeviceFilter {
     /// Optional USB vendor ID.
     pub vendor_id: Option<u16>,
@@ -430,6 +435,13 @@ pub struct UsbDeviceFilter {
     pub protocol_code: Option<u8>,
     /// Optional USB device serial number.
     pub serial_number: Option<String>,
+}
+
+impl UsbDeviceFilter {
+    /// Creates a new, empty USB device filter.
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 impl From<&UsbDeviceFilter> for web_sys::UsbDeviceFilter {
@@ -504,7 +516,6 @@ impl From<UsbRequestType> for web_sys::UsbRequestType {
 
 /// USB device request options.
 #[derive(Clone, Debug)]
-#[non_exhaustive]
 struct UsbDeviceRequestOptions {
     /// An array of filter objects for possible devices you would like to pair.
     pub filters: Vec<UsbDeviceFilter>,
@@ -530,6 +541,7 @@ impl From<&UsbDeviceRequestOptions> for web_sys::UsbDeviceRequestOptions {
 
 /// WebUSB event.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum UsbEvent {
     /// USB device was connected.
     Connected(UsbDevice),
@@ -543,7 +555,12 @@ struct SendWrapper<T>(pub T);
 unsafe impl<T> Send for SendWrapper<T> {}
 
 /// WebUSB event stream.
+///
+/// Provides device change events.
 pub struct UsbEvents {
+    // We wrap UsbEvent in SendWrapper to allow the use of
+    // BroadcastStream. However, we need to ensure that UsbEvents
+    // is !Send.
     rx: BroadcastStream<SendWrapper<UsbEvent>>,
     _marker: PhantomData<*const ()>,
 }
@@ -560,7 +577,7 @@ impl Stream for UsbEvents {
         loop {
             match ready!(self.rx.poll_next_unpin(cx)) {
                 Some(Ok(event)) => break Poll::Ready(Some(event.0)),
-                Some(Err(_)) => (),
+                Some(Err(BroadcastStreamRecvError::Lagged(_))) => (),
                 None => break Poll::Ready(None),
             }
         }
@@ -661,6 +678,8 @@ impl Drop for Usb {
 }
 
 /// An opened USB device.
+///
+/// Dropping this causes the USB device to be closed.
 pub struct OpenUsbDevice {
     device: UsbDevice,
     closed: bool,
@@ -689,6 +708,9 @@ impl OpenUsbDevice {
     }
 
     /// Releases all open interfaces and ends the device session.
+    ///
+    /// It is not necessary to call this method, since dropping
+    /// [OpenUsbDevice] will also close the USB device.
     pub async fn close(mut self) -> Result<()> {
         self.closed = true;
         JsFuture::from(self.dev().close()).await?;
