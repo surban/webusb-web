@@ -5,6 +5,8 @@ authors = ["Sebastian Urban <surban@surban.net>"]
 repository = "https://github.com/surban/webusb-web"
 version = "0.1.0"
 license = "Apache-2.0"
+keywords = ["usb", "webusb"]
+categories = ["hardware-support", "wasm", "web-programming"]
 edition = "2021"
 
 [dependencies]
@@ -12,7 +14,9 @@ futures-core = { version = "0.3" }
 futures-util = { version = "0.3" }
 js-sys = "0.3"
 tokio = { version = "1.43", default-features = false, features = ["sync"] }
-tokio-stream = { version = "0.1.17", default-features = false, features = ["sync"] }
+tokio-stream = { version = "0.1.17", default-features = false, features = [
+    "sync",
+] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = [
@@ -57,9 +61,9 @@ tokio = { version = "1.43", features = ["macros"] }
 [package.metadata.docs.rs]
 targets = ["wasm32-unknown-unknown"]
 
-[patch.crates-io]
-js-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
-web-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
-wasm-bindgen = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
-wasm-bindgen-futures = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
-wasm-bindgen-test = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# [patch.crates-io]
+# js-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# web-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen-futures = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen-test = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }

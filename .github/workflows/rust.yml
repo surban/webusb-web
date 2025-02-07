@@ -27,5 +27,5 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Build
-        run: cargo build
+        run: RUSTFLAGS="--cfg=web_sys_unstable_apis" cargo build --target wasm32-unknown-unknown
 
