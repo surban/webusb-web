@@ -11,6 +11,11 @@
 //! [WebUSB overview]: https://developer.mozilla.org/en-US/docs/Web/API/WebUSB_API
 //! [WebUSB specification]: https://wicg.github.io/webusb/
 //!
+//! ### Building
+//! This crate depends on unstable features of the `web_sys` crate.
+//! Therefore you must add `--cfg=web_sys_unstable_apis` to the Rust
+//! compiler flags (`RUSTFLAGS`).
+//! 
 //! ### Usage
 //! Call [`Usb::new()`] to obtain an interface to the WebUSB API.
 //! You must call [`Usb::request_device()`] to ask the user for permission before

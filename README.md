@@ -18,6 +18,21 @@ MDN provides a [WebUSB overview] while detailed information is available in the
 [![docs.rs page](https://docs.rs/webusb-web/badge.svg)](https://docs.rs/webusb-web)
 [![Apache 2 license](https://img.shields.io/crates/l/webusb-web)](https://raw.githubusercontent.com/surban/webusb-web/master/LICENSE)
 
+## Building
+
+This crate depends on unstable features of the `web_sys` crate.
+Therefore you must add `--cfg=web_sys_unstable_apis` to the Rust
+compiler flags.
+
+One way of doing this is to create the file `.cargo/config.toml` in your
+project with the following contents:
+
+```toml
+[build]
+target = "wasm32-unknown-unknown"
+rustflags = ["--cfg=web_sys_unstable_apis"]
+```
+
 ## License
 
 webusb-web is licensed under the [Apache 2.0 license].
