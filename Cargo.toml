@@ -3,7 +3,7 @@ name = "webusb-web"
 description = "WebUSB on the web 🕸️ — Access USB devices from the web browser."
 authors = ["Sebastian Urban <surban@surban.net>"]
 repository = "https://github.com/surban/webusb-web"
-version = "0.1.2"
+version = "0.1.3"
 license = "Apache-2.0"
 keywords = ["usb", "webusb"]
 categories = ["hardware-support", "wasm", "web-programming"]
@@ -60,7 +60,8 @@ tokio = { version = "1.43", features = ["macros"] }
 
 [package.metadata.docs.rs]
 targets = ["wasm32-unknown-unknown"]
-rustdoc-args = ["--cfg=web_sys_unstable_apis"]
+rustdoc-args = ["--cfg", "web_sys_unstable_apis"]
+rustc-args = ["--cfg", "web_sys_unstable_apis"]
 
 # [patch.crates-io]
 # js-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
