@@ -505,13 +505,51 @@ pub struct UsbDeviceFilter {
 
 impl UsbDeviceFilter {
     /// Creates a new, empty USB device filter.
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            vendor_id: None,
+            product_id: None,
+            class_code: None,
+            subclass_code: None,
+            protocol_code: None,
+            serial_number: None,
+        }
     }
 
-    /// Filter by vendor id and product id.
-    pub fn by_vendor_and_product_id(vendor_id: u16, product_id: u16) -> Self {
-        Self { vendor_id: Some(vendor_id), product_id: Some(product_id), ..Default::default() }
+    /// Filter by vendor id.
+    pub const fn with_vendor_id(mut self, vendor_id: u16) -> Self {
+        self.vendor_id = Some(vendor_id);
+        self
+    }
+
+    /// Filter by product id.
+    pub const fn with_product_id(mut self, product_id: u16) -> Self {
+        self.product_id = Some(product_id);
+        self
+    }
+
+    /// Filter by device class.
+    pub const fn with_class_code(mut self, class_code: u8) -> Self {
+        self.class_code = Some(class_code);
+        self
+    }
+
+    /// Filter by device subclass.
+    pub const fn with_subclass_code(mut self, subclass_code: u8) -> Self {
+        self.subclass_code = Some(subclass_code);
+        self
+    }
+
+    /// Filter by device protocol.
+    pub const fn with_protocol_code(mut self, protocol_code: u8) -> Self {
+        self.protocol_code = Some(protocol_code);
+        self
+    }
+
+    /// Filter by serial number.
+    pub fn with_serial_number<S: Into<String>>(mut self, serial_number: S) -> Self {
+        self.serial_number = Some(serial_number.into());
+        self
     }
 }
 
@@ -629,7 +667,7 @@ pub struct UsbControlRequest {
 impl UsbControlRequest {
     /// Creates a new USB control request with the specified
     /// parameters.
-    pub fn new(
+    pub const fn new(
         request_type: UsbRequestType, recipient: UsbRecipient, request: u8, value: u16, index: u16,
     ) -> Self {
         Self { request_type, recipient, request, value, index }
