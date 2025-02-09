@@ -120,7 +120,7 @@ async fn test() {
     log!("Active device configuration: {cfg:?}");
 
     let iface = cfg.interfaces.iter().next().unwrap_log();
-    let alt = iface.alternates.iter().next().unwrap_log();
+    let alt = &iface.alternate;
     assert_eq!(alt.alternate_setting, 0);
     assert_eq!(alt.interface_class, 255);
     assert_eq!(alt.interface_subclass, 1);
@@ -187,31 +187,18 @@ async fn test() {
     let ctrl_task = async {
         for i in 0x00..0xff {
             let data = vec![i; i as usize];
-            let n = open
-                .control_transfer_out(
-                    UsbRecipient::Interface,
-                    UsbRequestType::Class,
-                    i,
-                    0xfffe,
-                    iface.interface_number.into(),
-                    &data,
-                )
-                .await
-                .unwrap_log();
+            let control = UsbControlRequest::new(
+                UsbRequestType::Class,
+                UsbRecipient::Interface,
+                i,
+                0xfffe,
+                iface.interface_number.into(),
+            );
+            let n = open.control_transfer_out(&control, &data).await.unwrap_log();
             assert_eq!(n as usize, data.len());
             log!("Sent control request {i:x} of size {} bytes", data.len());
 
-            let back = open
-                .control_transfer_in(
-                    UsbRecipient::Interface,
-                    UsbRequestType::Class,
-                    i,
-                    0xfffe,
-                    iface.interface_number.into(),
-                    i as _,
-                )
-                .await
-                .unwrap_log();
+            let back = open.control_transfer_in(&control, i as _).await.unwrap_log();
             log!("Received data from control request {i:x}");
 
             assert_eq!(back, data);
@@ -241,16 +228,14 @@ async fn test() {
     log!("Interface claimed");
 
     log!("Terminating USB gadget");
-    open.control_transfer_out(
-        UsbRecipient::Interface,
+    let control = UsbControlRequest::new(
         UsbRequestType::Class,
+        UsbRecipient::Interface,
         0xff,
         0,
         iface.interface_number.into(),
-        &[],
-    )
-    .await
-    .unwrap_log();
+    );
+    open.control_transfer_out(&control, &[]).await.unwrap_log();
 
     log!("Waiting for disconnect event");
     disconnected_rx.await.unwrap_log();

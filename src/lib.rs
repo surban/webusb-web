@@ -124,9 +124,16 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct UsbConfiguration {
-    /// The numeric value identifying this configuration.
+    /// The configuration value of this configuration.
+    ///
+    /// This is equal to the `bConfigurationValue` field of the configuration
+    /// descriptor provided by the device defining this configuration.
     pub configuration_value: u8,
-    /// Optional name describing this configuration.
+    /// The name provided by the device to describe this configuration.
+    ///
+    /// This is equal to the value of the string descriptor with the index provided
+    /// in the `iConfiguration` field of the configuration descriptor defining
+    /// this configuration.
     pub configuration_name: Option<String>,
     /// The interfaces available under this configuration.
     pub interfaces: Vec<UsbInterface>,
@@ -155,8 +162,20 @@ impl From<&web_sys::UsbConfiguration> for UsbConfiguration {
 pub struct UsbInterface {
     /// The interface number.
     pub interface_number: u8,
-    /// The alternate settings for this interface.
-    pub alternates: Vec<UsbAlternateSetting>,
+    /// The currently selected alternate configuration of this interface.
+    ///
+    /// By default this is the [`UsbAlternateInterface`] from alternates with
+    /// [`UsbAlternateInterface::alternate_setting`] equal to 0.
+    /// It can be changed by calling [`OpenUsbDevice::select_alternate_interface`]
+    /// with any other value found in [`UsbInterface::alternates`]
+    pub alternate: UsbAlternateInterface,
+    /// The alternate configuration possible for this interface.
+    ///
+    /// Use [`OpenUsbDevice::select_alternate_interface`] to select an alternate
+    /// configuration.
+    pub alternates: Vec<UsbAlternateInterface>,
+    /// Returns whether or not this interface has been claimed by the current web page.
+    pub claimed: bool,
 }
 
 impl From<&web_sys::UsbInterface> for UsbInterface {
@@ -165,32 +184,49 @@ impl From<&web_sys::UsbInterface> for UsbInterface {
         let mut alternates = Vec::new();
         for i in 0..alt_list.length() {
             if let Some(alt) = alt_list.get(i).dyn_ref::<web_sys::UsbAlternateInterface>() {
-                alternates.push(UsbAlternateSetting::from(alt));
+                alternates.push(UsbAlternateInterface::from(alt));
             }
         }
-        Self { interface_number: iface.interface_number(), alternates }
+
+        Self {
+            interface_number: iface.interface_number(),
+            alternate: UsbAlternateInterface::from(&iface.alternate()),
+            alternates,
+            claimed: iface.claimed(),
+        }
     }
 }
 
 /// An alternate setting containing detailed interface information.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct UsbAlternateSetting {
-    /// The alternate setting value.
+pub struct UsbAlternateInterface {
+    /// The alternate setting number of this interface.
+    ///
+    /// This is equal to the `bAlternateSetting` field of the interface descriptor defining this interface.
     pub alternate_setting: u8,
-    /// The interface class code.
+    /// The class of this interface.
+    ///
+    /// This is equal to the `bInterfaceClass` field of the interface descriptor defining this interface.
     pub interface_class: u8,
-    /// The interface subclass code.
+    /// The subclass of this interface.
+    ///
+    /// This is equal to the `bInterfaceSubClass` field of the interface descriptor defining this interface.
     pub interface_subclass: u8,
-    /// The interface protocol code.
+    /// The protocol supported by this interface.
+    ///
+    /// This is equal to the `bInterfaceProtocol` field of the interface descriptor defining this interface.
     pub interface_protocol: u8,
-    /// Optional name for this interface alternate.
+    /// The name of the interface, if one is provided by the device.
+    ///
+    /// This is the value of the string descriptor with the index specified by the `iInterface` field of
+    /// the interface descriptor defining this interface.
     pub interface_name: Option<String>,
     /// The endpoints belonging to this alternate setting.
     pub endpoints: Vec<UsbEndpoint>,
 }
 
-impl From<&web_sys::UsbAlternateInterface> for UsbAlternateSetting {
+impl From<&web_sys::UsbAlternateInterface> for UsbAlternateInterface {
     fn from(alt: &web_sys::UsbAlternateInterface) -> Self {
         let ep_list = alt.endpoints();
         let mut endpoints = Vec::new();
@@ -199,6 +235,7 @@ impl From<&web_sys::UsbAlternateInterface> for UsbAlternateSetting {
                 endpoints.push(UsbEndpoint::from(ep));
             }
         }
+
         Self {
             alternate_setting: alt.alternate_setting(),
             interface_class: alt.interface_class(),
@@ -210,17 +247,20 @@ impl From<&web_sys::UsbAlternateInterface> for UsbAlternateSetting {
     }
 }
 
-/// A USB endpoint used for communication with a device.
+/// A USB endpoint provided by the USB device.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct UsbEndpoint {
-    /// The endpoint number.
+    /// The endpoint's "endpoint number" which is a value from 1 to 15 extracted from the
+    /// `bEndpointAddress` field of the endpoint descriptor defining this endpoint.
+    ///
+    /// This value is used to identify the endpoint when calling methods on [`OpenUsbDevice`].
     pub endpoint_number: u8,
-    /// The direction of transfer (e.g. "in" or "out").
+    /// The direction in which this endpoint transfers data.
     pub direction: UsbDirection,
-    /// The transfer type (e.g. "bulk", "interrupt", or "isochronous").
+    /// The transfer type of the endpoint.
     pub endpoint_type: UsbEndpointType,
-    /// The maximum packet size for this endpoint.
+    /// The size of the packets that data sent through this endpoint will be divided into.
     pub packet_size: u32,
 }
 
@@ -314,6 +354,21 @@ impl UsbDevice {
         self.device.device_version_subminor()
     }
 
+    /// Major version of USB protocol version supported by the device.
+    pub fn usb_version_major(&self) -> u8 {
+        self.device.usb_version_major()
+    }
+
+    /// Minor version of USB protocol version supported by the device.
+    pub fn usb_version_minor(&self) -> u8 {
+        self.device.usb_version_minor()
+    }
+
+    /// Subminor version of USB protocol version supported by the device.
+    pub fn usb_version_subminor(&self) -> u8 {
+        self.device.usb_version_subminor()
+    }
+
     /// Optional manufacturer name.
     pub fn manufacturer_name(&self) -> Option<String> {
         self.device.manufacturer_name()
@@ -381,6 +436,9 @@ impl std::fmt::Debug for UsbDevice {
             .field("device_version_major", &self.device_version_major())
             .field("device_version_minor", &self.device_version_minor())
             .field("device_version_subminor", &self.device_version_subminor())
+            .field("usb_version_major", &self.usb_version_major())
+            .field("usb_version_minor", &self.usb_version_minor())
+            .field("usb_version_subminor", &self.usb_version_subminor())
             .field("manufacturer_name", &self.manufacturer_name())
             .field("product_name", &self.product_name())
             .field("serial_number", &self.serial_number())
@@ -449,6 +507,11 @@ impl UsbDeviceFilter {
     /// Creates a new, empty USB device filter.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Filter by vendor id and product id.
+    pub fn by_vendor_and_product_id(vendor_id: u16, product_id: u16) -> Self {
+        Self { vendor_id: Some(vendor_id), product_id: Some(product_id), ..Default::default() }
     }
 }
 
@@ -544,6 +607,38 @@ impl From<&UsbDeviceRequestOptions> for web_sys::UsbDeviceRequestOptions {
         }
 
         web_sys::UsbDeviceRequestOptions::new(&filters)
+    }
+}
+
+/// USB control request.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct UsbControlRequest {
+    /// Whether the request is standard, class-specific or vendor-specific.
+    pub request_type: UsbRequestType,
+    /// The target of the transfer on the device.
+    pub recipient: UsbRecipient,
+    /// Vendor-specific command.
+    pub request: u8,
+    /// Vendor-specific request parameters.
+    pub value: u16,
+    /// The interface number of the recipient.
+    pub index: u16,
+}
+
+impl UsbControlRequest {
+    /// Creates a new USB control request with the specified
+    /// parameters.
+    pub fn new(
+        request_type: UsbRequestType, recipient: UsbRecipient, request: u8, value: u16, index: u16,
+    ) -> Self {
+        Self { request_type, recipient, request, value, index }
+    }
+}
+
+impl From<&UsbControlRequest> for web_sys::UsbControlTransferParameters {
+    fn from(req: &UsbControlRequest) -> Self {
+        Self::new(req.index, req.recipient.into(), req.request, req.request_type.into(), req.value)
     }
 }
 
@@ -770,25 +865,17 @@ impl OpenUsbDevice {
     fn check_status(status: web_sys::UsbTransferStatus) -> Result<()> {
         match status {
             web_sys::UsbTransferStatus::Ok => Ok(()),
-            web_sys::UsbTransferStatus::Stall => Err(Error::new(ErrorKind::Stall, "stall condition")),
-            web_sys::UsbTransferStatus::Babble => Err(Error::new(ErrorKind::Babble, "device babbled")),
+            web_sys::UsbTransferStatus::Stall => Err(Error::new(ErrorKind::Stall, "USB device stalled transfer")),
+            web_sys::UsbTransferStatus::Babble => {
+                Err(Error::new(ErrorKind::Babble, "USB device sent too much data"))
+            }
             other => unreachable!("unsupported UsbTransferStatus {other:?}"),
         }
     }
 
     /// Perform a control transfer from device to host.
-    pub async fn control_transfer_in(
-        &self, recipient: UsbRecipient, request_type: UsbRequestType, request: u8, value: u16, index: u16,
-        len: u16,
-    ) -> Result<Vec<u8>> {
-        let setup = web_sys::UsbControlTransferParameters::new(
-            index,
-            recipient.into(),
-            request,
-            request_type.into(),
-            value,
-        );
-
+    pub async fn control_transfer_in(&self, control_request: &UsbControlRequest, len: u16) -> Result<Vec<u8>> {
+        let setup = web_sys::UsbControlTransferParameters::from(control_request);
         let res = JsFuture::from(self.dev().control_transfer_in(&setup, len)).await?;
         let res = res.dyn_into::<web_sys::UsbInTransferResult>().unwrap();
 
@@ -799,18 +886,8 @@ impl OpenUsbDevice {
     }
 
     /// Perform a control transfer from host to device.
-    pub async fn control_transfer_out(
-        &self, recipient: UsbRecipient, request_type: UsbRequestType, request: u8, value: u16, index: u16,
-        data: &[u8],
-    ) -> Result<u32> {
-        let setup = web_sys::UsbControlTransferParameters::new(
-            index,
-            recipient.into(),
-            request,
-            request_type.into(),
-            value,
-        );
-
+    pub async fn control_transfer_out(&self, control_request: &UsbControlRequest, data: &[u8]) -> Result<u32> {
+        let setup = web_sys::UsbControlTransferParameters::from(control_request);
         let data = Uint8Array::from(data);
         let res = JsFuture::from(self.dev().control_transfer_out_with_u8_array(&setup, &data)?).await?;
         let res = res.dyn_into::<web_sys::UsbOutTransferResult>().unwrap();
