@@ -117,6 +117,23 @@ impl From<JsValue> for Error {
     }
 }
 
+impl From<Error> for std::io::Error {
+    fn from(err: Error) -> Self {
+        let kind = match err.kind {
+            ErrorKind::Unsupported => std::io::ErrorKind::Unsupported,
+            ErrorKind::AlreadyOpen => std::io::ErrorKind::ResourceBusy,
+            ErrorKind::Disconnected => std::io::ErrorKind::NotConnected,
+            ErrorKind::Security => std::io::ErrorKind::PermissionDenied,
+            ErrorKind::Stall => std::io::ErrorKind::InvalidData,
+            ErrorKind::Babble => std::io::ErrorKind::UnexpectedEof,
+            ErrorKind::Transfer => std::io::ErrorKind::ConnectionReset,
+            ErrorKind::InvalidAccess => std::io::ErrorKind::InvalidInput,
+            ErrorKind::Other => std::io::ErrorKind::Other,
+        };
+        std::io::Error::new(kind, err)
+    }
+}
+
 /// WebUSB result.
 pub type Result<T> = std::result::Result<T, Error>;
 
