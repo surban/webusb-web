@@ -26,6 +26,7 @@
 
 use std::{
     fmt,
+    hash::{Hash, Hasher},
     marker::PhantomData,
     pin::Pin,
     task::{ready, Context, Poll},
@@ -325,7 +326,7 @@ impl From<web_sys::UsbEndpointType> for UsbEndpointType {
 }
 
 /// A USB device.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UsbDevice {
     device: web_sys::UsbDevice,
 }
@@ -425,7 +426,7 @@ impl UsbDevice {
 
     /// End the device session and relinquish all obtained permissions to
     /// access the USB device.
-    pub async fn forget(&self) {
+    pub async fn forget(self) {
         JsFuture::from(self.device.forget()).await.unwrap();
     }
 
@@ -466,9 +467,31 @@ impl std::fmt::Debug for UsbDevice {
     }
 }
 
+impl Hash for UsbDevice {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.vendor_id().hash(state);
+        self.product_id().hash(state);
+        self.device_class().hash(state);
+        self.device_subclass().hash(state);
+        self.device_protocol().hash(state);
+        self.device_version_major().hash(state);
+        self.device_version_minor().hash(state);
+        self.device_version_subminor().hash(state);
+        self.manufacturer_name().hash(state);
+        self.product_name().hash(state);
+        self.serial_number().hash(state);
+    }
+}
+
 impl From<web_sys::UsbDevice> for UsbDevice {
     fn from(device: web_sys::UsbDevice) -> Self {
         Self { device }
+    }
+}
+
+impl AsRef<web_sys::UsbDevice> for UsbDevice {
+    fn as_ref(&self) -> &web_sys::UsbDevice {
+        &self.device
     }
 }
 
