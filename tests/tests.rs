@@ -72,6 +72,9 @@ async fn test() {
         dev.vendor_id() == filter.vendor_id.unwrap_log() && dev.product_id() == filter.product_id.unwrap_log()
     );
 
+    let dev2 = dev.clone();
+    assert_eq!(dev2, dev);
+
     log!("Enumerating devices. The device selected should now be visible.");
     let devices = usb.devices().await;
     let mut found = false;
@@ -82,6 +85,11 @@ async fn test() {
         {
             found = true;
             log!("Device found!");
+
+            assert_eq!(device, dev);
+            log!("Device equal!");
+        } else {
+            assert_ne!(device, dev);
         }
     }
     assert!(found, "device not enumerated after paired");
