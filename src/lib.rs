@@ -769,6 +769,8 @@ impl Stream for UsbEvents {
 pub struct Usb {
     usb: web_sys::Usb,
     event_rx: broadcast::Receiver<SendWrapper<UsbEvent>>,
+    on_connect: Closure<dyn Fn(web_sys::UsbConnectionEvent)>,
+    on_disconnect: Closure<dyn Fn(web_sys::UsbConnectionEvent)>,
 }
 
 impl fmt::Debug for Usb {
@@ -790,7 +792,7 @@ impl Usb {
                 let _ = event_tx.send(SendWrapper(UsbEvent::Connected(event.device().into())));
             }) as Box<dyn Fn(_)>)
         };
-        usb.set_onconnect(Some(on_connect.into_js_value().unchecked_ref()));
+        usb.add_event_listener_with_callback("connect", on_connect.as_ref().unchecked_ref()).unwrap();
 
         let on_disconnect = {
             let event_tx = event_tx.clone();
@@ -798,9 +800,9 @@ impl Usb {
                 let _ = event_tx.send(SendWrapper(UsbEvent::Disconnected(event.device().into())));
             }) as Box<dyn Fn(_)>)
         };
-        usb.set_ondisconnect(Some(on_disconnect.into_js_value().unchecked_ref()));
+        usb.add_event_listener_with_callback("disconnect", on_disconnect.as_ref().unchecked_ref()).unwrap();
 
-        Ok(Self { usb, event_rx })
+        Ok(Self { usb, event_rx, on_connect, on_disconnect })
     }
 
     fn browser_usb() -> Result<web_sys::Usb> {
@@ -855,8 +857,12 @@ impl Usb {
 
 impl Drop for Usb {
     fn drop(&mut self) {
-        self.usb.set_onconnect(None);
-        self.usb.set_ondisconnect(None);
+        self.usb
+            .remove_event_listener_with_callback("connect", self.on_connect.as_ref().unchecked_ref())
+            .unwrap();
+        self.usb
+            .remove_event_listener_with_callback("disconnect", self.on_disconnect.as_ref().unchecked_ref())
+            .unwrap();
     }
 }
 
