@@ -679,10 +679,8 @@ impl UsbDeviceRequestOptions {
 
 impl From<&UsbDeviceRequestOptions> for web_sys::UsbDeviceRequestOptions {
     fn from(value: &UsbDeviceRequestOptions) -> Self {
-        let filters = js_sys::Array::new();
-        for filter in &value.filters {
-            filters.push(&web_sys::UsbDeviceFilter::from(filter));
-        }
+        let filters =
+            value.filters.iter().map(|filter| web_sys::UsbDeviceFilter::from(filter)).collect::<Vec<_>>();
 
         web_sys::UsbDeviceRequestOptions::new(&filters)
     }
@@ -984,9 +982,9 @@ impl OpenUsbDevice {
     pub async fn isochronous_transfer_in(
         &self, endpoint: u8, packet_lens: impl IntoIterator<Item = u32>,
     ) -> Result<Vec<Result<Vec<u8>>>> {
-        let array: js_sys::Array = packet_lens.into_iter().map(|len| JsValue::from_f64(len as _)).collect();
+        let packet_lens = packet_lens.into_iter().map(|len| js_sys::Number::from(len as f64)).collect::<Vec<_>>();
 
-        let res = JsFuture::from(self.dev().isochronous_transfer_in(endpoint, &array)).await?;
+        let res = JsFuture::from(self.dev().isochronous_transfer_in(endpoint, &packet_lens)).await?;
         let res = res.dyn_into::<web_sys::UsbIsochronousInTransferResult>().unwrap();
 
         let mut results = Vec::new();
@@ -1017,7 +1015,7 @@ impl OpenUsbDevice {
         }
 
         let data = Uint8Array::from(&data[..]);
-        let lens: js_sys::Array = lens.into_iter().map(|len| JsValue::from_f64(len as _)).collect();
+        let lens = lens.into_iter().map(|len| js_sys::Number::from(len as f64)).collect::<Vec<_>>();
 
         let res =
             JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &data, &lens)?).await?;
