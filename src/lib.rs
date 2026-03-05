@@ -679,8 +679,7 @@ impl UsbDeviceRequestOptions {
 
 impl From<&UsbDeviceRequestOptions> for web_sys::UsbDeviceRequestOptions {
     fn from(value: &UsbDeviceRequestOptions) -> Self {
-        let filters =
-            value.filters.iter().map(|filter| web_sys::UsbDeviceFilter::from(filter)).collect::<Vec<_>>();
+        let filters = value.filters.iter().map(web_sys::UsbDeviceFilter::from).collect::<Vec<_>>();
 
         web_sys::UsbDeviceRequestOptions::new(&filters)
     }
