@@ -447,7 +447,7 @@ dependencies = [
 
 [[package]]
 name = "webusb-web"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "futures-core",
  "futures-util",
