@@ -151,7 +151,7 @@ async fn test() {
     let recv_task = async {
         let mut b = None;
         loop {
-            let data = open.transfer_in(in_ep, in_packet_size).await.unwrap_log();
+            let data = open.transfer_in(in_ep, in_packet_size).await.unwrap_log().to_vec();
             log!("Received {} bytes: {:x?}...", data.len(), &data[..16]);
             assert_eq!(data.len(), in_packet_size as usize);
 
@@ -177,7 +177,7 @@ async fn test() {
             assert_eq!(n as usize, data.len());
             log!("Sent control request {i:x} of size {} bytes", data.len());
 
-            let back = open.control_transfer_in(&control, i as _).await.unwrap_log();
+            let back = open.control_transfer_in(&control, i as _).await.unwrap_log().to_vec();
             log!("Received data from control request {i:x}");
 
             assert_eq!(back, data);

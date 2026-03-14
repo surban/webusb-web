@@ -138,6 +138,60 @@ impl From<Error> for std::io::Error {
 /// WebUSB result.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Data received from a USB device.
+///
+/// Use [`len`](Self::len) to query the size, [`copy_to`](Self::copy_to)
+/// to copy into an existing buffer without allocating, or
+/// [`to_vec`](Self::to_vec) to get an owned copy.
+#[derive(Clone)]
+pub struct UsbData(Uint8Array);
+
+impl UsbData {
+    /// Creates a new transfer data from a JS `DataView`.
+    fn from_data_view(view: &js_sys::DataView) -> Self {
+        Self(Uint8Array::new_with_byte_offset_and_length(
+            &view.buffer(),
+            view.byte_offset() as u32,
+            view.byte_length() as u32,
+        ))
+    }
+
+    /// The length.
+    pub fn len(&self) -> usize {
+        self.0.length() as usize
+    }
+
+    /// Returns `true` if empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Copies the data into `buf`.
+    ///
+    /// # Panics
+    /// Panics if `buf.len() != self.len()`.
+    pub fn copy_to(&self, buf: &mut [u8]) {
+        self.0.copy_to(buf);
+    }
+
+    /// Copies the data into a new `Vec<u8>`.
+    pub fn to_vec(&self) -> Vec<u8> {
+        self.0.to_vec()
+    }
+}
+
+impl From<UsbData> for Vec<u8> {
+    fn from(data: UsbData) -> Self {
+        data.to_vec()
+    }
+}
+
+impl fmt::Debug for UsbData {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("UsbData").field("len", &self.len()).finish()
+    }
+}
+
 /// A configuration belonging to a USB device.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -838,7 +892,7 @@ impl Usb {
         let list = JsFuture::from(self.usb.get_devices()).await.unwrap();
         js_sys::Array::from(&list)
             .iter()
-            .map(|dev| UsbDevice::from(dev.dyn_into::<web_sys::UsbDevice>().unwrap()))
+            .map(|dev| UsbDevice::from(dev.unchecked_into::<web_sys::UsbDevice>()))
             .collect()
     }
 
@@ -848,7 +902,7 @@ impl Usb {
     pub async fn request_device(&self, filters: impl IntoIterator<Item = UsbDeviceFilter>) -> Result<UsbDevice> {
         let opts = &UsbDeviceRequestOptions::new(filters);
         let dev = JsFuture::from(self.usb.request_device(&opts.into())).await?;
-        Ok(dev.dyn_into::<web_sys::UsbDevice>().unwrap().into())
+        Ok(dev.into())
     }
 }
 
@@ -955,23 +1009,24 @@ impl OpenUsbDevice {
     }
 
     /// Perform a control transfer from device to host.
-    pub async fn control_transfer_in(&self, control_request: &UsbControlRequest, len: u16) -> Result<Vec<u8>> {
+    pub async fn control_transfer_in(&self, control_request: &UsbControlRequest, len: u16) -> Result<UsbData> {
         let setup = web_sys::UsbControlTransferParameters::from(control_request);
         let res = JsFuture::from(self.dev().control_transfer_in(&setup, len)).await?;
-        let res = res.dyn_into::<web_sys::UsbInTransferResult>().unwrap();
 
         Self::check_status(res.status())?;
 
-        let data = Uint8Array::new(&res.data().unwrap().buffer()).to_vec();
-        Ok(data)
+        Ok(UsbData::from_data_view(&res.data().unwrap()))
     }
 
     /// Perform a control transfer from host to device.
     pub async fn control_transfer_out(&self, control_request: &UsbControlRequest, data: &[u8]) -> Result<u32> {
         let setup = web_sys::UsbControlTransferParameters::from(control_request);
-        let data = Uint8Array::from(data);
-        let res = JsFuture::from(self.dev().control_transfer_out_with_u8_array(&setup, &data)?).await?;
-        let res = res.dyn_into::<web_sys::UsbOutTransferResult>().unwrap();
+        // SAFETY: The WebUSB spec requires the browser to "get a copy of the
+        // buffer source" synchronously before returning the promise (spec step 4).
+        // The view is only read during this synchronous copy and no WASM memory
+        // growth can occur before it completes.
+        let view = unsafe { Uint8Array::view(data) };
+        let res = JsFuture::from(self.dev().control_transfer_out_with_u8_array(&setup, &view)?).await?;
 
         Self::check_status(res.status())?;
         Ok(res.bytes_written())
@@ -980,17 +1035,15 @@ impl OpenUsbDevice {
     /// Transmits time sensitive information from the device.
     pub async fn isochronous_transfer_in(
         &self, endpoint: u8, packet_lens: impl IntoIterator<Item = u32>,
-    ) -> Result<Vec<Result<Vec<u8>>>> {
+    ) -> Result<Vec<Result<UsbData>>> {
         let packet_lens = packet_lens.into_iter().map(|len| js_sys::Number::from(len as f64)).collect::<Vec<_>>();
 
         let res = JsFuture::from(self.dev().isochronous_transfer_in(endpoint, &packet_lens)).await?;
-        let res = res.dyn_into::<web_sys::UsbIsochronousInTransferResult>().unwrap();
 
         let mut results = Vec::new();
         for packet in res.packets() {
-            let packet = packet.dyn_into::<web_sys::UsbIsochronousInTransferPacket>().unwrap();
             let result = match Self::check_status(packet.status()) {
-                Ok(()) => Ok(Uint8Array::new(&res.data().unwrap().buffer()).to_vec()),
+                Ok(()) => Ok(UsbData::from_data_view(&packet.data().unwrap())),
                 Err(err) => Err(err),
             };
             results.push(result);
@@ -1005,24 +1058,28 @@ impl OpenUsbDevice {
     pub async fn isochronous_transfer_out(
         &self, endpoint: u8, packets: impl IntoIterator<Item = &[u8]>,
     ) -> Result<Vec<Result<u32>>> {
-        let mut data = Vec::new();
-        let mut lens = Vec::new();
+        let packets: Vec<&[u8]> = packets.into_iter().collect();
+        let lens: Vec<_> = packets.iter().map(|p| js_sys::Number::from(p.len() as f64)).collect();
 
-        for packet in packets {
-            data.extend_from_slice(packet);
-            lens.push(data.len());
-        }
-
-        let data = Uint8Array::from(&data[..]);
-        let lens = lens.into_iter().map(|len| js_sys::Number::from(len as f64)).collect::<Vec<_>>();
-
-        let res =
-            JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &data, &lens)?).await?;
-        let res = res.dyn_into::<web_sys::UsbIsochronousOutTransferResult>().unwrap();
+        // SAFETY: The WebUSB spec requires the browser to "get a copy of the
+        // buffer source" synchronously before returning the promise (spec step 7).
+        // The view is only read during this synchronous copy and no WASM memory
+        // growth can occur before it completes.
+        let res = if packets.len() == 1 {
+            let view = unsafe { Uint8Array::view(packets[0]) };
+            JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &view, &lens)?).await?
+        } else {
+            let total: usize = packets.iter().map(|p| p.len()).sum();
+            let mut data = Vec::with_capacity(total);
+            for packet in &packets {
+                data.extend_from_slice(packet);
+            }
+            let view = unsafe { Uint8Array::view(&data) };
+            JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &view, &lens)?).await?
+        };
 
         let mut results = Vec::new();
         for packet in res.packets() {
-            let packet = packet.dyn_into::<web_sys::UsbIsochronousOutTransferPacket>().unwrap();
             let result = match Self::check_status(packet.status()) {
                 Ok(()) => Ok(packet.bytes_written()),
                 Err(err) => Err(err),
@@ -1034,23 +1091,24 @@ impl OpenUsbDevice {
     }
 
     /// Performs a bulk or interrupt transfer from specified endpoint of the device.
-    pub async fn transfer_in(&self, endpoint: u8, len: u32) -> Result<Vec<u8>> {
+    pub async fn transfer_in(&self, endpoint: u8, len: u32) -> Result<UsbData> {
         let res = JsFuture::from(self.dev().transfer_in(endpoint, len)).await?;
-        let res = res.dyn_into::<web_sys::UsbInTransferResult>().unwrap();
 
         Self::check_status(res.status())?;
 
-        let data = Uint8Array::new(&res.data().unwrap().buffer()).to_vec();
-        Ok(data)
+        Ok(UsbData::from_data_view(&res.data().unwrap()))
     }
 
     /// Performs a bulk or interrupt transfer to the specified endpoint of the device.
     ///
     /// Returns the number of bytes sent.
     pub async fn transfer_out(&self, endpoint: u8, data: &[u8]) -> Result<u32> {
-        let data = Uint8Array::from(data);
-        let res = JsFuture::from(self.dev().transfer_out_with_u8_array(endpoint, &data)?).await?;
-        let res = res.dyn_into::<web_sys::UsbOutTransferResult>().unwrap();
+        // SAFETY: The WebUSB spec requires the browser to "get a copy of the
+        // buffer source" synchronously before returning the promise (spec step 7).
+        // The view is only read during this synchronous copy and no WASM memory
+        // growth can occur before it completes.
+        let view = unsafe { Uint8Array::view(data) };
+        let res = JsFuture::from(self.dev().transfer_out_with_u8_array(endpoint, &view)?).await?;
 
         Self::check_status(res.status())?;
 
