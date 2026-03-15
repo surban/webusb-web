@@ -2,7 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-## 0.4.2 - Unreleased
+## 0.5.0 - 2026-03-15
+
+### Changed
+- **Breaking**: Transfer methods (`control_transfer_in`, `transfer_in`, `isochronous_transfer_in`) now return `UsbData` instead of `Vec<u8>` to avoid copies between WASM and JS memory.
+- Avoid unnecessary copies for outbound transfers (`control_transfer_out`, `transfer_out`, `isochronous_transfer_out`).
+
+### Added
+- `UsbData` type with `len()`, `is_empty()`, `copy_to()`, `to_vec()` and `Into<Vec<u8>>`.
+
+### Fixed
+- Work around Chromium bug on Windows where USB stalls are incorrectly reported as `NetworkError` instead of `status: "stall"` (Chromium issue #40832809).
+
+## 0.4.2 - 2025-03-15
 
 ### Changed
 - Update `web-sys` and `js-sys` to 0.3.91.
