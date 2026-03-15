@@ -24,6 +24,8 @@
 
 #![warn(missing_docs)]
 
+mod quirks;
+
 use std::{
     fmt,
     hash::{Hash, Hasher},
@@ -1011,7 +1013,10 @@ impl OpenUsbDevice {
     /// Perform a control transfer from device to host.
     pub async fn control_transfer_in(&self, control_request: &UsbControlRequest, len: u16) -> Result<UsbData> {
         let setup = web_sys::UsbControlTransferParameters::from(control_request);
-        let res = JsFuture::from(self.dev().control_transfer_in(&setup, len)).await?;
+        let res = match JsFuture::from(self.dev().control_transfer_in(&setup, len)).await {
+            Ok(res) => res,
+            Err(err) => return Err(quirks::network_error_as_stall(err)),
+        };
 
         Self::check_status(res.status())?;
 
@@ -1026,7 +1031,10 @@ impl OpenUsbDevice {
         // The view is only read during this synchronous copy and no WASM memory
         // growth can occur before it completes.
         let view = unsafe { Uint8Array::view(data) };
-        let res = JsFuture::from(self.dev().control_transfer_out_with_u8_array(&setup, &view)?).await?;
+        let res = match JsFuture::from(self.dev().control_transfer_out_with_u8_array(&setup, &view)?).await {
+            Ok(res) => res,
+            Err(err) => return Err(quirks::network_error_as_stall(err)),
+        };
 
         Self::check_status(res.status())?;
         Ok(res.bytes_written())
@@ -1092,7 +1100,10 @@ impl OpenUsbDevice {
 
     /// Performs a bulk or interrupt transfer from specified endpoint of the device.
     pub async fn transfer_in(&self, endpoint: u8, len: u32) -> Result<UsbData> {
-        let res = JsFuture::from(self.dev().transfer_in(endpoint, len)).await?;
+        let res = match JsFuture::from(self.dev().transfer_in(endpoint, len)).await {
+            Ok(res) => res,
+            Err(err) => return Err(quirks::network_error_as_stall(err)),
+        };
 
         Self::check_status(res.status())?;
 
@@ -1108,7 +1119,10 @@ impl OpenUsbDevice {
         // The view is only read during this synchronous copy and no WASM memory
         // growth can occur before it completes.
         let view = unsafe { Uint8Array::view(data) };
-        let res = JsFuture::from(self.dev().transfer_out_with_u8_array(endpoint, &view)?).await?;
+        let res = match JsFuture::from(self.dev().transfer_out_with_u8_array(endpoint, &view)?).await {
+            Ok(res) => res,
+            Err(err) => return Err(quirks::network_error_as_stall(err)),
+        };
 
         Self::check_status(res.status())?;
 
