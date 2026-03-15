@@ -42,6 +42,29 @@ use tokio_stream::wrappers::{errors::BroadcastStreamRecvError, BroadcastStream};
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 
+/// Creates a `Uint8Array` suitable for passing to Web APIs.
+///
+/// When WASM runs with threads, linear memory is backed by `SharedArrayBuffer`,
+/// but Web APIs like WebUSB reject views into shared buffers. In that case
+/// the data is copied into a fresh (non-shared) `Uint8Array`.
+///
+/// # Safety
+/// When WASM memory is **not** shared, this returns a direct view into WASM
+/// linear memory. The caller must ensure the returned array is consumed
+/// synchronously (before any `.await` or memory-growing operation).
+unsafe fn uint8_array_for_api(data: &[u8]) -> Uint8Array {
+    // SAFETY (view): caller guarantees no memory growth before synchronous consumption.
+    let view = unsafe { Uint8Array::view(data) };
+    if view.buffer().is_instance_of::<js_sys::SharedArrayBuffer>() {
+        // Running with threads: copy to a regular ArrayBuffer.
+        let copy = Uint8Array::new_with_length(data.len() as u32);
+        copy.set(&view, 0);
+        copy
+    } else {
+        view
+    }
+}
+
 /// WebUSB error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
@@ -1028,10 +1051,10 @@ impl OpenUsbDevice {
         let setup = web_sys::UsbControlTransferParameters::from(control_request);
         // SAFETY: The WebUSB spec requires the browser to "get a copy of the
         // buffer source" synchronously before returning the promise (spec step 4).
-        // The view is only read during this synchronous copy and no WASM memory
+        // The array is only read during this synchronous copy and no WASM memory
         // growth can occur before it completes.
-        let view = unsafe { Uint8Array::view(data) };
-        let res = match JsFuture::from(self.dev().control_transfer_out_with_u8_array(&setup, &view)?).await {
+        let arr = unsafe { uint8_array_for_api(data) };
+        let res = match JsFuture::from(self.dev().control_transfer_out_with_u8_array(&setup, &arr)?).await {
             Ok(res) => res,
             Err(err) => return Err(quirks::network_error_as_stall(err)),
         };
@@ -1071,19 +1094,19 @@ impl OpenUsbDevice {
 
         // SAFETY: The WebUSB spec requires the browser to "get a copy of the
         // buffer source" synchronously before returning the promise (spec step 7).
-        // The view is only read during this synchronous copy and no WASM memory
+        // The array is only read during this synchronous copy and no WASM memory
         // growth can occur before it completes.
         let res = if packets.len() == 1 {
-            let view = unsafe { Uint8Array::view(packets[0]) };
-            JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &view, &lens)?).await?
+            let arr = unsafe { uint8_array_for_api(packets[0]) };
+            JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &arr, &lens)?).await?
         } else {
             let total: usize = packets.iter().map(|p| p.len()).sum();
             let mut data = Vec::with_capacity(total);
             for packet in &packets {
                 data.extend_from_slice(packet);
             }
-            let view = unsafe { Uint8Array::view(&data) };
-            JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &view, &lens)?).await?
+            let arr = unsafe { uint8_array_for_api(&data) };
+            JsFuture::from(self.dev().isochronous_transfer_out_with_u8_array(endpoint, &arr, &lens)?).await?
         };
 
         let mut results = Vec::new();
@@ -1116,10 +1139,10 @@ impl OpenUsbDevice {
     pub async fn transfer_out(&self, endpoint: u8, data: &[u8]) -> Result<u32> {
         // SAFETY: The WebUSB spec requires the browser to "get a copy of the
         // buffer source" synchronously before returning the promise (spec step 7).
-        // The view is only read during this synchronous copy and no WASM memory
+        // The array is only read during this synchronous copy and no WASM memory
         // growth can occur before it completes.
-        let view = unsafe { Uint8Array::view(data) };
-        let res = match JsFuture::from(self.dev().transfer_out_with_u8_array(endpoint, &view)?).await {
+        let arr = unsafe { uint8_array_for_api(data) };
+        let res = match JsFuture::from(self.dev().transfer_out_with_u8_array(endpoint, &arr)?).await {
             Ok(res) => res,
             Err(err) => return Err(quirks::network_error_as_stall(err)),
         };
